@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "product_id": "MYN_2938401",
+  "source_platform": "Myntra",
+  "title": "Black Solid Fitted Bodycon Dress",
+  "brand": "Mango",
+  "product_url": "https://www.myntra.com/dresses/mango/black-fitted-bodycon-dress/2938401/buy",
+  "pricing": {
+    "current_price_minor": 249000,
+    "original_mrp_minor": 349000,
+    "currency": "INR",
+    "estimated_shipping_minor": 0
+  },
+  "images": {
+    "primary_image_url": "https://assets.example.com/products/MYN_2938401/front.jpg",
+    "transparent_cutout_url": null
+  },
+  "inventory": {
+    "in_stock_sizes": ["S", "M", "L"],
+    "out_of_stock_sizes": ["XS", "XL"],
+    "is_available": true
+  }
+}

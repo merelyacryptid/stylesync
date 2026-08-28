@@ -1,5 +1,7 @@
 # StyleSync
 
+I got tired of curating outfits online and I realised I'd rather have someone else do it for me. 4 free. :))))))
+
 StyleSync is an AI-powered outfit-curation workspace. A user creates a named project, provides event, budget, size, and style constraints, then explores purchasable outfit boards built from a normalized product catalog.
 
 ## Repository layout

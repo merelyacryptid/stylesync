@@ -26,7 +26,10 @@ The initial build is an India-only, web-only womenswear product. It will support
 
 ## Getting started
 
-Prerequisites will be finalized after the initial architecture decisions. Each app and service includes its own README and environment template. Do not commit populated `.env` files.
+to run:
+cd apps/web
+npm install
+npm run dev
 
 ## Working agreements
 

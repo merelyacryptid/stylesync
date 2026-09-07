@@ -14,6 +14,7 @@ Any agent making a material project decision must update this file in the same c
 - UI implementation: original desktop-first Next.js experience, with a warm editorial palette, playful collage treatment, and responsive mobile layouts. Do not copy provided third-party/reference UI code verbatim.
 - Authentication: guests can create one project; require sign-in to save, share, revisit, or purchase a look.
 - Guest projects: store locally first and migrate explicitly to an authenticated account.
+- Auth and database: use Supabase Auth (email/password) and Supabase Postgres. Apply `infra/supabase/migrations/20260907_001_auth_and_projects.sql`; user-owned tables must keep Row Level Security enabled. See `docs/decisions/0004-supabase-auth-and-project-store.md`.
 
 ## Catalog and retailer policy
 
@@ -23,6 +24,7 @@ Any agent making a material project decision must update this file in the same c
 - Prefer approved retailer APIs, affiliate feeds, and licensed data. Amazon new integrations use Creators API; do not start new PA-API 5 work. Do not scrape retailers or reuse images without explicit permission and documented terms review.
 - Affiliate link conversion does not itself grant permission to display product images or catalog details.
 - Product pricing uses ISO currency codes and integer minor units; never use floats for money.
+- Course-demo catalog: use clearly fictional product records and placeholder images in `apps/web/data/demo-catalog.ts`; do not represent them as live retailer listings.
 
 ## Repository layout
 
@@ -42,3 +44,4 @@ Any agent making a material project decision must update this file in the same c
 - `docs/decisions/0001-monorepo-layout.md`
 - `docs/decisions/0002-mvp-market-and-data-strategy.md`
 - `docs/decisions/0003-guest-first-pinterest-experience.md`
+- `docs/decisions/0004-supabase-auth-and-project-store.md`

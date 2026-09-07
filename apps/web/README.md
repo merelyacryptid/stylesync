@@ -17,7 +17,15 @@ npm run dev
 
 Then open `http://localhost:3000`.
 
+## Authentication and database
+
+StyleSync uses Supabase Auth and Postgres. Follow [the setup guide](../../docs/supabase-setup.md), copy `.env.local.example` to `.env.local`, and add the two public values from your Supabase project. Never add the service-role key to this frontend.
+
 The product image URLs in this prototype are visual placeholders. Replace them with assets from an approved retailer feed before any public deployment.
+
+## Demo catalog
+
+`data/demo-catalog.ts` is the local catalog for the course prototype. It contains fictional products with fields that mirror the intended API: ID, category, price, size availability, retailer label, update time, source URL, and style tags. Add a record there before wiring a real catalog source.
 
 ## Next milestone
 

@@ -19,8 +19,6 @@ def create_project(
     db: Session = Depends(get_db),
 ) -> Project:
     if not identity.is_authenticated:
-        # Guests get exactly one project (ADR 0003). If one already exists for this guest
-        # token, hand it back instead of silently creating a second.
         existing = db.scalar(select(Project).where(Project.guest_token == identity.guest_token))
         if existing:
             raise HTTPException(

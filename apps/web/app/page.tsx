@@ -4,19 +4,52 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { demoCatalog, demoStudioItems, type DemoProduct } from "../data/demo-catalog";
 import { supabase } from "../lib/supabase";
+import { fetchRealCurations, fetchCategoryAlternatives, type BackendCuration, type BackendProduct } from "../lib/backend";
 
 type Screen = "home" | "feed" | "studio";
 type Project = { name: string; budget: number; vibe: string[]; prompt: string };
-type ProfileForm = { displayName: string; topSize: string; bottomSize: string; waist: string; inseam: string; shoeSize: string; vibes: string[]; autoFilterStock: boolean };
+type StudioItem = DemoProduct & { source?: "backend" };
+type Board = { id: string; name: string; score: number; price: number; image: string; accents: string[]; items: StudioItem[] };
 
 const vibes = ["Old money", "Soft romance", "City cool", "Y2K glow", "Coastal muse", "Desi modern"];
-const boards = [
-  { id: 1, name: "Saffron hour", score: 94, price: 4760, image: "https://images.unsplash.com/photo-1539008835657-9e8e9680c956?auto=format&fit=crop&w=900&q=80", accents: ["#d56844", "#f0c5a5", "#2b2d37"] },
-  { id: 2, name: "The linen edit", score: 91, price: 4290, image: "https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?auto=format&fit=crop&w=900&q=80", accents: ["#e5dac8", "#6c7a63", "#b88d64"] },
-  { id: 3, name: "After dark", score: 89, price: 5180, image: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80", accents: ["#211e2c", "#866e92", "#e7c2c7"] }
+
+const initialBoards: Board[] = [
+  { id: "1", name: "Saffron hour", score: 94, price: 4760, image: "https://images.unsplash.com/photo-1539008835657-9e8e9680c956?auto=format&fit=crop&w=900&q=80", accents: ["#d56844", "#f0c5a5", "#2b2d37"], items: demoStudioItems },
+  { id: "2", name: "The linen edit", score: 91, price: 4290, image: "https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?auto=format&fit=crop&w=900&q=80", accents: ["#e5dac8", "#6c7a63", "#b88d64"], items: demoStudioItems },
+  { id: "3", name: "After dark", score: 89, price: 5180, image: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80", accents: ["#211e2c", "#866e92", "#e7c2c7"], items: demoStudioItems }
 ];
 
-const items = demoStudioItems;
+function mapBackendProduct(p: BackendProduct): StudioItem {
+  return {
+    id: p.product_id,
+    category: p.primary_category,
+    name: p.title,
+    brand: p.brand ?? "",
+    retailer: p.source_platform,
+    price: Math.round(p.current_price_minor / 100),
+    currency: "INR",
+    sizes: p.in_stock_sizes,
+    inStock: p.is_available,
+    image: p.primary_image_url,
+    vibeTags: [],
+    sourceUpdatedAt: "",
+    productUrl: p.product_url,
+    source: "backend"
+  };
+}
+
+function mapCuration(curation: BackendCuration, index: number, fallbackImage: string): Board {
+  const hero = curation.items[0];
+  return {
+    id: curation.id,
+    name: hero?.sub_category ?? hero?.primary_category ?? `Board ${index + 1}`,
+    score: Math.round(curation.compatibility_score),
+    price: Math.round((curation.total_price_minor + curation.shipping_total_minor) / 100),
+    image: hero?.primary_image_url ?? fallbackImage,
+    accents: ["#d56844", "#f0c5a5", "#2b2d37"],
+    items: curation.items.map(mapBackendProduct)
+  };
+}
 
 function Rupee({ value }: { value: number }) {
   return <>₹{value.toLocaleString("en-IN")}</>;
@@ -31,8 +64,13 @@ export default function Home() {
   const [showAccount, setShowAccount] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isGuestProjectHydrated, setIsGuestProjectHydrated] = useState(false);
-  const [activeBoard, setActiveBoard] = useState(boards[0]);
-  const [selectedItems, setSelectedItems] = useState(items);
+
+  const [boards, setBoards] = useState<Board[]>(initialBoards);
+  const [boardsLoading, setBoardsLoading] = useState(false);
+  const [boardsError, setBoardsError] = useState<string | null>(null);
+
+  const [activeBoard, setActiveBoard] = useState<Board>(initialBoards[0]);
+  const [selectedItems, setSelectedItems] = useState<StudioItem[]>(initialBoards[0].items);
   const total = useMemo(() => selectedItems.reduce((sum, item) => sum + item.price, 0), [selectedItems]);
 
   useEffect(() => {
@@ -85,16 +123,49 @@ export default function Home() {
     setProject(draft);
     setScreen("feed");
     setShowProjectForm(false);
+    void loadRealBoards(draft);
   }
 
-  function replaceItem(index: number) {
-    const alternatives = demoCatalog.filter((product) => product.inStock && product.category === currentCategory(index));
-    const replacement = alternatives.find((product) => product.id !== selectedItems[index].id) ?? selectedItems[index];
-    setSelectedItems((current) => current.map((item, itemIndex) => itemIndex === index ? replacement : item));
+  async function loadRealBoards(forProject: Project) {
+    setBoardsLoading(true);
+    setBoardsError(null);
+    try {
+      const accessToken = session?.access_token ?? null;
+      const curations = await fetchRealCurations(
+        { name: forProject.name, budgetRupees: forProject.budget, prompt: forProject.prompt },
+        accessToken,
+        3
+      );
+      if (curations.length === 0) {
+        setBoardsError("No combination of catalog items fit that budget yet — showing sample boards instead.");
+        return;
+      }
+      const mapped = curations.map((c, i) => mapCuration(c, i, initialBoards[i % initialBoards.length].image));
+      setBoards(mapped);
+    }     catch (err) {
+      console.error("STYLESYNC DEBUG", err);
+      setBoardsError("Couldn't reach the curation backend — showing sample boards instead.");
+    } finally {
+      setBoardsLoading(false);
+    }
   }
 
-  function currentCategory(index: number) {
-    return selectedItems[index].category;
+  async function replaceItem(index: number) {
+    const current = selectedItems[index];
+    if (current.source === "backend") {
+      try {
+        const alternatives = await fetchCategoryAlternatives(current.category, current.id);
+        if (alternatives.length === 0) return;
+        const replacement = mapBackendProduct(alternatives[Math.floor(Math.random() * alternatives.length)]);
+        setSelectedItems((curr) => curr.map((item, i) => (i === index ? replacement : item)));
+      } catch {
+        // best-effort swap; leave item in place on failure
+      }
+      return;
+    }
+    const alternatives = demoCatalog.filter((product) => product.inStock && product.category === current.category);
+    const replacement = alternatives.find((product) => product.id !== current.id) ?? current;
+    setSelectedItems((curr) => curr.map((item, itemIndex) => (itemIndex === index ? replacement : item)));
   }
 
   return (
@@ -114,7 +185,7 @@ export default function Home() {
         <header className="topbar"><p className="eyebrow">STYLE, YOUR WAY</p><div className="top-actions"><button className="icon-button" aria-label="Notifications">◌</button><button className="avatar" aria-label={session ? "Open your account" : "Sign in"} onClick={() => session ? setShowAccount(true) : setShowSignIn(true)}>{session?.user.email?.charAt(0).toUpperCase() ?? "S"}</button></div></header>
 
         {screen === "home" && <HomeScreen project={project} onStart={() => { setDraft(project); setShowProjectForm(true); }} onExplore={() => setScreen("feed")} />}
-        {screen === "feed" && <FeedScreen project={project} onBack={() => setScreen("home")} onOpen={(board) => { setActiveBoard(board); setScreen("studio"); }} />}
+        {screen === "feed" && <FeedScreen project={project} boards={boards} loading={boardsLoading} error={boardsError} onBack={() => setScreen("home")} onOpen={(board) => { setActiveBoard(board); setSelectedItems(board.items); setScreen("studio"); }} />}
         {screen === "studio" && <StudioScreen board={activeBoard} project={project} selectedItems={selectedItems} total={total} onBack={() => setScreen("feed")} onSwap={replaceItem} onSignIn={() => setShowSignIn(true)} />}
       </section>
 
@@ -133,13 +204,16 @@ function HomeScreen({ project, onStart, onExplore }: { project: Project; onStart
   </div>;
 }
 
-function FeedScreen({ project, onBack, onOpen }: { project: Project; onBack: () => void; onOpen: (board: typeof boards[number]) => void }) {
-  return <div className="page feed-page"><div className="page-heading"><button className="back-button" onClick={onBack}>← Your space</button><p className="eyebrow">MADE FOR {project.name.toUpperCase()}</p><h1>Three ways to wear <em>the feeling.</em></h1><p>{project.prompt}</p></div><div className="filter-row"><span>Matching your vibe</span>{project.vibe.map((vibe) => <button key={vibe}>{vibe}</button>)}<button>Within <Rupee value={project.budget} /></button></div><div className="look-grid">{boards.map((board) => <article className="look-card" key={board.id}><div className="look-image" style={{ backgroundImage: `linear-gradient(0deg, rgba(26,23,28,.25), transparent 55%), url(${board.image})` }}><span className="style-score">{board.score}% match</span><button className="heart" aria-label="Save look">♡</button></div><div className="look-info"><div><h2>{board.name}</h2><p><Rupee value={board.price} /> <span>·</span> 4 pieces</p></div><button className="open-look" onClick={() => onOpen(board)}>Open look <span>→</span></button></div></article>)}</div><p className="feed-footnote">These are concept boards for your course prototype. Availability is illustrative.</p></div>;
+function FeedScreen({ project, boards, loading, error, onBack, onOpen }: { project: Project; boards: Board[]; loading: boolean; error: string | null; onBack: () => void; onOpen: (board: Board) => void }) {
+  return <div className="page feed-page"><div className="page-heading"><button className="back-button" onClick={onBack}>← Your space</button><p className="eyebrow">MADE FOR {project.name.toUpperCase()}</p><h1>Three ways to wear <em>the feeling.</em></h1><p>{project.prompt}</p></div><div className="filter-row"><span>Matching your vibe</span>{project.vibe.map((vibe) => <button key={vibe}>{vibe}</button>)}<button>Within <Rupee value={project.budget} /></button></div>
+    {loading && <p className="feed-footnote">Curating your boards from the live catalog…</p>}
+    {error && <p className="feed-footnote">{error}</p>}
+    <div className="look-grid">{boards.map((board) => <article className="look-card" key={board.id}><div className="look-image" style={{ backgroundImage: `linear-gradient(0deg, rgba(26,23,28,.25), transparent 55%), url(${board.image})` }}><span className="style-score">{board.score}% match</span><button className="heart" aria-label="Save look">♡</button></div><div className="look-info"><div><h2>{board.name}</h2><p><Rupee value={board.price} /> <span>·</span> {board.items.length} pieces</p></div><button className="open-look" onClick={() => onOpen(board)}>Open look <span>→</span></button></div></article>)}</div><p className="feed-footnote">Prices refresh from the live catalog when the backend is reachable.</p></div>;
 }
 
-function StudioScreen({ board, project, selectedItems, total, onBack, onSwap, onSignIn }: { board: typeof boards[number]; project: Project; selectedItems: DemoProduct[]; total: number; onBack: () => void; onSwap: (index: number) => void; onSignIn: () => void }) {
+function StudioScreen({ board, project, selectedItems, total, onBack, onSwap, onSignIn }: { board: Board; project: Project; selectedItems: StudioItem[]; total: number; onBack: () => void; onSwap: (index: number) => void; onSignIn: () => void }) {
   const remaining = project.budget - total;
-  return <div className="page studio-page"><div className="studio-heading"><button className="back-button" onClick={onBack}>← Looks for {project.name}</button><div><p className="eyebrow">MAKE IT YOURS</p><h1>{board.name}</h1></div><button className="save-button" onClick={onSignIn}>♡ Save this look</button></div><div className="studio-layout"><section className="outfit-canvas"><div className="canvas-label"><span>YOUR OUTFIT BOARD</span><b>{board.score}% style match</b></div><div className="canvas-art"><div className="canvas-sun" />{selectedItems.map((item, index) => <button key={`${item.name}-${index}`} className={`canvas-product product-${index}`} onClick={() => onSwap(index)}><img src={item.image} alt={item.name} /><span><b>{item.category}</b>{item.name}<em>Tap to swap</em></span></button>)}<i className="canvas-doodle">✦</i></div><p className="canvas-tip">Tap a piece to see a fresh alternative. We’ll keep the vibe and budget in view.</p></section><aside className="budget-panel"><p className="eyebrow">THE NUMBERS</p><h2>Looking good, <em>budget too.</em></h2><div className="budget-total"><span>Total so far</span><strong><Rupee value={total} /></strong><small>{remaining >= 0 ? `${new Intl.NumberFormat("en-IN").format(remaining)} left for a little extra ✦` : `${new Intl.NumberFormat("en-IN").format(Math.abs(remaining))} over your budget`}</small><div className="budget-bar"><i style={{ width: `${Math.min(100, (total / project.budget) * 100)}%` }} /></div></div><div className="item-list">{selectedItems.map((item, index) => <button key={`${item.name}-list`} onClick={() => onSwap(index)}><span>{item.category}</span><b>{item.name}</b><em><Rupee value={item.price} /> · swap ↗</em></button>)}</div><button className="primary-button buy-button" onClick={onSignIn}>Save & shop this look <span>→</span></button><p className="legal-note">You’ll sign in before saving. Shopping links are illustrative in this demo.</p></aside></div></div>;
+  return <div className="page studio-page"><div className="studio-heading"><button className="back-button" onClick={onBack}>← Looks for {project.name}</button><div><p className="eyebrow">MAKE IT YOURS</p><h1>{board.name}</h1></div><button className="save-button" onClick={onSignIn}>♡ Save this look</button></div><div className="studio-layout"><section className="outfit-canvas"><div className="canvas-label"><span>YOUR OUTFIT BOARD</span><b>{board.score}% style match</b></div><div className="canvas-art"><div className="canvas-sun" />{selectedItems.map((item, index) => <button key={`${item.name}-${index}`} className={`canvas-product product-${index}`} onClick={() => onSwap(index)}><img src={item.image} alt={item.name} /><span><b>{item.category}</b>{item.name}<em>Tap to swap</em></span></button>)}<i className="canvas-doodle">✦</i></div><p className="canvas-tip">Tap a piece to see a fresh alternative. We'll keep the vibe and budget in view.</p></section><aside className="budget-panel"><p className="eyebrow">THE NUMBERS</p><h2>Looking good, <em>budget too.</em></h2><div className="budget-total"><span>Total so far</span><strong><Rupee value={total} /></strong><small>{remaining >= 0 ? `${new Intl.NumberFormat("en-IN").format(remaining)} left for a little extra ✦` : `${new Intl.NumberFormat("en-IN").format(Math.abs(remaining))} over your budget`}</small><div className="budget-bar"><i style={{ width: `${Math.min(100, (total / project.budget) * 100)}%` }} /></div></div><div className="item-list">{selectedItems.map((item, index) => <button key={`${item.name}-list`} onClick={() => onSwap(index)}><span>{item.category}</span><b>{item.name}</b><em><Rupee value={item.price} /> · swap ↗</em></button>)}</div><button className="primary-button buy-button" onClick={onSignIn}>Save & shop this look <span>→</span></button><p className="legal-note">You'll sign in before saving. Shopping links are illustrative in this demo.</p></aside></div></div>;
 }
 
 function ProjectForm({ draft, onChange, onToggleVibe, onClose, onSubmit }: { draft: Project; onChange: (project: Project) => void; onToggleVibe: (vibe: string) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
@@ -165,7 +239,7 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
     onClose();
   }
 
-  return <div className="dialog-backdrop"><form className="signin-dialog" onSubmit={submit}><button className="close-button" type="button" onClick={onClose}>×</button><span className="sign-in-star">✦</span><p className="eyebrow">SAVE YOUR GOOD TASTE</p><h2>{mode === "signIn" ? <>Welcome <em>back.</em></> : <>Make it <em>yours.</em></>}</h2><p>{mode === "signIn" ? "Sign in to pick up where you left off." : "Create a free account to save edits and make your next look even more you."}</p><label style={{ display: "block", textAlign: "left", fontSize: 12, fontWeight: 700, marginTop: 14 }}>Email<input style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #ddd4d5", borderRadius: 10 }} type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label><label style={{ display: "block", textAlign: "left", fontSize: 12, fontWeight: 700, marginTop: 14 }}>Password<input style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #ddd4d5", borderRadius: 10 }} type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <p className="auth-message">{message}</p>}<button className="primary-button" disabled={isSubmitting}>{isSubmitting ? "One moment…" : mode === "signIn" ? "Sign in" : "Create free account"}<span>→</span></button><button className="email-button" type="button" onClick={() => { setMode(mode === "signIn" ? "signUp" : "signIn"); setMessage(""); }}>{mode === "signIn" ? "New here? Create an account" : "Already have an account? Sign in"}</button><small>By continuing, you agree to StyleSync’s terms.</small></form></div>;
+  return <div className="dialog-backdrop"><form className="signin-dialog" onSubmit={submit}><button className="close-button" type="button" onClick={onClose}>×</button><span className="sign-in-star">✦</span><p className="eyebrow">SAVE YOUR GOOD TASTE</p><h2>{mode === "signIn" ? <>Welcome <em>back.</em></> : <>Make it <em>yours.</em></>}</h2><p>{mode === "signIn" ? "Sign in to pick up where you left off." : "Create a free account to save edits and make your next look even more you."}</p><label style={{ display: "block", textAlign: "left", fontSize: 12, fontWeight: 700, marginTop: 14 }}>Email<input style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #ddd4d5", borderRadius: 10 }} type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label><label style={{ display: "block", textAlign: "left", fontSize: 12, fontWeight: 700, marginTop: 14 }}>Password<input style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #ddd4d5", borderRadius: 10 }} type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <p className="auth-message">{message}</p>}<button className="primary-button" disabled={isSubmitting}>{isSubmitting ? "One moment…" : mode === "signIn" ? "Sign in" : "Create free account"}<span>→</span></button><button className="email-button" type="button" onClick={() => { setMode(mode === "signIn" ? "signUp" : "signIn"); setMessage(""); }}>{mode === "signIn" ? "New here? Create an account" : "Already have an account? Sign in"}</button><small>By continuing, you agree to StyleSync's terms.</small></form></div>;
 }
 
 function AccountDialog({ session, onClose, onSignOut }: { session: Session; onClose: () => void; onSignOut: () => Promise<void> }) {

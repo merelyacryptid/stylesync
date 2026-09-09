@@ -14,7 +14,7 @@ Any agent making a material project decision must update this file in the same c
 - UI implementation: original desktop-first Next.js experience, with a warm editorial palette, playful collage treatment, and responsive mobile layouts. Do not copy provided third-party/reference UI code verbatim.
 - Authentication: guests can create one project; require sign-in to save, share, revisit, or purchase a look.
 - Guest projects: store locally first and migrate explicitly to an authenticated account.
-- Auth and database: use Supabase Auth (email/password) and Supabase Postgres. Apply `infra/supabase/migrations/20260907_001_auth_and_projects.sql`; user-owned tables must keep Row Level Security enabled. See `docs/decisions/0004-supabase-auth-and-project-store.md`.
+- Auth and database: use Supabase Auth (email/password) and Supabase Postgres. Apply `infra/supabase/migrations/20260907_001_auth_and_projects.sql` and `20260907_002_profile_preferences.sql`; user-owned tables must keep Row Level Security enabled. See `docs/decisions/0004-supabase-auth-and-project-store.md`.
 
 ## Catalog and retailer policy
 

@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase";
 
 type Screen = "home" | "feed" | "studio";
 type Project = { name: string; budget: number; vibe: string[]; prompt: string };
+type ProfileForm = { displayName: string; topSize: string; bottomSize: string; waist: string; inseam: string; shoeSize: string; vibes: string[]; autoFilterStock: boolean };
 
 const vibes = ["Old money", "Soft romance", "City cool", "Y2K glow", "Coastal muse", "Desi modern"];
 const boards = [
@@ -119,7 +120,7 @@ export default function Home() {
 
       {showProjectForm && <ProjectForm draft={draft} onChange={setDraft} onToggleVibe={toggleVibe} onClose={() => setShowProjectForm(false)} onSubmit={createProject} />}
       {showSignIn && <SignInDialog onClose={() => setShowSignIn(false)} />}
-      {showAccount && session && <AccountDialog name={session.user.user_metadata.display_name ?? session.user.email?.split("@")[0] ?? "StyleSync friend"} email={session.user.email ?? ""} onClose={() => setShowAccount(false)} onSignOut={async () => { await supabase?.auth.signOut(); setShowAccount(false); }} />}
+      {showAccount && session && <AccountDialog session={session} onClose={() => setShowAccount(false)} onSignOut={async () => { await supabase?.auth.signOut(); setShowAccount(false); }} />}
     </main>
   );
 }
@@ -167,6 +168,34 @@ function SignInDialog({ onClose }: { onClose: () => void }) {
   return <div className="dialog-backdrop"><form className="signin-dialog" onSubmit={submit}><button className="close-button" type="button" onClick={onClose}>×</button><span className="sign-in-star">✦</span><p className="eyebrow">SAVE YOUR GOOD TASTE</p><h2>{mode === "signIn" ? <>Welcome <em>back.</em></> : <>Make it <em>yours.</em></>}</h2><p>{mode === "signIn" ? "Sign in to pick up where you left off." : "Create a free account to save edits and make your next look even more you."}</p><label style={{ display: "block", textAlign: "left", fontSize: 12, fontWeight: 700, marginTop: 14 }}>Email<input style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #ddd4d5", borderRadius: 10 }} type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label><label style={{ display: "block", textAlign: "left", fontSize: 12, fontWeight: 700, marginTop: 14 }}>Password<input style={{ display: "block", width: "100%", marginTop: 6, padding: 11, border: "1px solid #ddd4d5", borderRadius: 10 }} type="password" required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" /></label>{message && <p className="auth-message">{message}</p>}<button className="primary-button" disabled={isSubmitting}>{isSubmitting ? "One moment…" : mode === "signIn" ? "Sign in" : "Create free account"}<span>→</span></button><button className="email-button" type="button" onClick={() => { setMode(mode === "signIn" ? "signUp" : "signIn"); setMessage(""); }}>{mode === "signIn" ? "New here? Create an account" : "Already have an account? Sign in"}</button><small>By continuing, you agree to StyleSync’s terms.</small></form></div>;
 }
 
-function AccountDialog({ name, email, onClose, onSignOut }: { name: string; email: string; onClose: () => void; onSignOut: () => Promise<void> }) {
-  return <div className="dialog-backdrop"><div className="signin-dialog"><button className="close-button" onClick={onClose}>×</button><p className="eyebrow">YOUR ACCOUNT</p><h2>{name}</h2><p>{email}</p><button className="primary-button" onClick={onClose}>Keep styling <span>→</span></button><button className="email-button" onClick={onSignOut}>Sign out</button></div></div>;
+function AccountDialog({ session, onClose, onSignOut }: { session: Session; onClose: () => void; onSignOut: () => Promise<void> }) {
+  const initialName = session.user.user_metadata.display_name ?? session.user.email?.split("@")[0] ?? "StyleSync friend";
+  const [profile, setProfile] = useState<ProfileForm>({ displayName: initialName, topSize: "", bottomSize: "", waist: "", inseam: "", shoeSize: "", vibes: [], autoFilterStock: true });
+  const [message, setMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.from("profiles").select("display_name, top_size, bottom_size, waist_inches, inseam_inches, shoe_size_eu, selected_vibes, auto_filter_stock").eq("id", session.user.id).maybeSingle().then(({ data, error }) => {
+      if (error) { setMessage("We could not load your profile yet."); return; }
+      if (!data) return;
+      setProfile({ displayName: data.display_name ?? initialName, topSize: data.top_size ?? "", bottomSize: data.bottom_size ?? "", waist: data.waist_inches?.toString() ?? "", inseam: data.inseam_inches?.toString() ?? "", shoeSize: data.shoe_size_eu?.toString() ?? "", vibes: data.selected_vibes ?? [], autoFilterStock: data.auto_filter_stock ?? true });
+    });
+  }, [initialName, session.user.id]);
+
+  function updateProfile(partial: Partial<ProfileForm>) { setProfile((current) => ({ ...current, ...partial })); }
+  function toggleVibe(vibe: string) { updateProfile({ vibes: profile.vibes.includes(vibe) ? profile.vibes.filter((entry) => entry !== vibe) : [...profile.vibes, vibe] }); }
+
+  async function saveProfile() {
+    if (!supabase) { setMessage("Add your Supabase URL and anon key to .env.local first."); return; }
+    setIsSaving(true);
+    setMessage("");
+    const { error } = await supabase.from("profiles").upsert({ id: session.user.id, display_name: profile.displayName.trim() || initialName, top_size: profile.topSize || null, bottom_size: profile.bottomSize || null, waist_inches: profile.waist ? Number(profile.waist) : null, inseam_inches: profile.inseam ? Number(profile.inseam) : null, shoe_size_eu: profile.shoeSize ? Number(profile.shoeSize) : null, selected_vibes: profile.vibes, auto_filter_stock: profile.autoFilterStock });
+    setIsSaving(false);
+    setMessage(error ? error.message : "Preferences saved.");
+  }
+
+  const fieldStyle = { display: "block", width: "100%", marginTop: 6, padding: 10, border: "1px solid #ddd4d5", borderRadius: 10, background: "#fff" };
+  const labelStyle = { display: "block", textAlign: "left" as const, fontSize: 11, fontWeight: 700, marginTop: 13 };
+  return <div className="dialog-backdrop"><div className="signin-dialog" style={{ width: "min(100%, 620px)", maxHeight: "92vh", overflowY: "auto", textAlign: "left" }}><button className="close-button" onClick={onClose}>×</button><p className="eyebrow">YOUR ACCOUNT</p><h2 style={{ fontSize: 40 }}>{profile.displayName}</h2><p style={{ marginTop: -10 }}>{session.user.email}</p><section style={{ borderTop: "1px solid #eee7e9", marginTop: 22, paddingTop: 10 }}><p className="eyebrow">PERSONAL DETAILS</p><label style={labelStyle}>Display name<input style={fieldStyle} value={profile.displayName} onChange={(event) => updateProfile({ displayName: event.target.value })} /></label><p style={{ fontSize: 10, color: "#81767d" }}>Your email is managed securely by Supabase: {session.user.email}</p></section><section style={{ borderTop: "1px solid #eee7e9", marginTop: 20, paddingTop: 15 }}><p className="eyebrow">FIT MEASUREMENTS</p><div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}><label style={labelStyle}>Top size<select style={fieldStyle} value={profile.topSize} onChange={(event) => updateProfile({ topSize: event.target.value })}><option value="">Select</option>{["XS", "S", "M", "L", "XL", "XXL"].map((size) => <option key={size}>{size}</option>)}</select></label><label style={labelStyle}>Bottom size<select style={fieldStyle} value={profile.bottomSize} onChange={(event) => updateProfile({ bottomSize: event.target.value })}><option value="">Select</option>{["XS", "S", "M", "L", "XL", "XXL"].map((size) => <option key={size}>{size}</option>)}</select></label><label style={labelStyle}>Waist (inches)<input style={fieldStyle} type="number" min="18" max="60" value={profile.waist} onChange={(event) => updateProfile({ waist: event.target.value })} /></label><label style={labelStyle}>Inseam (inches)<input style={fieldStyle} type="number" min="20" max="44" value={profile.inseam} onChange={(event) => updateProfile({ inseam: event.target.value })} /></label><label style={labelStyle}>EU shoe size<input style={fieldStyle} type="number" min="30" max="48" step="0.5" value={profile.shoeSize} onChange={(event) => updateProfile({ shoeSize: event.target.value })} /></label></div></section><section style={{ borderTop: "1px solid #eee7e9", marginTop: 20, paddingTop: 15 }}><p className="eyebrow">STYLE PREFERENCES</p><div className="vibe-picker">{vibes.map((vibe) => <button className={profile.vibes.includes(vibe) ? "selected" : ""} type="button" key={vibe} onClick={() => toggleVibe(vibe)}>{profile.vibes.includes(vibe) ? "✓ " : ""}{vibe}</button>)}</div><label style={{ display: "flex", gap: 9, alignItems: "center", fontSize: 12, marginTop: 15 }}><input type="checkbox" checked={profile.autoFilterStock} onChange={(event) => updateProfile({ autoFilterStock: event.target.checked })} /> Only show items available in my size</label></section>{message && <p className="auth-message">{message}</p>}<button className="primary-button" style={{ width: "100%", marginTop: 22 }} onClick={saveProfile} disabled={isSaving}>{isSaving ? "Saving…" : "Save preferences"}<span>→</span></button><button className="email-button" style={{ width: "100%" }} onClick={onSignOut}>Sign out</button></div></div>;
 }

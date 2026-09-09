@@ -239,4 +239,4 @@ export async function fetchCategoryAlternatives(
       product.product_id !== excludeProductId && product.is_available
   );
 }
-```
+

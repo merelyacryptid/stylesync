@@ -7,7 +7,8 @@ import { supabase } from "../lib/supabase";
 import { fetchRealCurations, fetchCategoryAlternatives, type BackendCuration, type BackendProduct } from "../lib/backend";
 
 type Screen = "home" | "feed" | "studio";
-type Project = { name: string; budget: number; vibe: string[]; prompt: string };
+type Project = { name: string; budget: number; vibe: string[]; prompt: string; occasion: string };
+type ProfileForm = { displayName: string; topSize: string; bottomSize: string; waist: string; inseam: string; shoeSize: string; vibes: string[]; autoFilterStock: boolean };
 type StudioItem = DemoProduct & { source?: "backend" };
 type Board = { id: string; name: string; score: number; price: number; image: string; accents: string[]; items: StudioItem[] };
 
@@ -57,7 +58,7 @@ function Rupee({ value }: { value: number }) {
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [project, setProject] = useState<Project>({ name: "Your first style moment", budget: 5000, vibe: ["Soft romance", "Coastal muse"], prompt: "A playful, polished outfit for a sunlit dinner." });
+  const [project, setProject] = useState<Project>({ name: "Your first style moment", budget: 5000, vibe: ["Soft romance", "Coastal muse"], prompt: "A playful, polished outfit for a sunlit dinner.", occasion: "Sunlit dinner" });
   const [draft, setDraft] = useState(project);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
@@ -77,8 +78,15 @@ export default function Home() {
     const storedProject = window.localStorage.getItem("stylesync-guest-project");
     if (storedProject) {
       const parsedProject = JSON.parse(storedProject) as Project;
-      setProject(parsedProject);
-      setDraft(parsedProject);
+      const loaded = {
+        name: parsedProject.name ?? "Your first style moment",
+        budget: parsedProject.budget ?? 5000,
+        vibe: parsedProject.vibe ?? ["Soft romance", "Coastal muse"],
+        prompt: parsedProject.prompt ?? "A playful, polished outfit for a sunlit dinner.",
+        occasion: parsedProject.occasion ?? "Sunlit dinner"
+      };
+      setProject(loaded);
+      setDraft(loaded);
     }
     setIsGuestProjectHydrated(true);
   }, []);
@@ -109,7 +117,7 @@ export default function Home() {
       max_budget_minor: Math.round(guestProject.budget * 100),
       currency: "INR",
       selected_vibes: guestProject.vibe,
-      event_description: guestProject.prompt
+      event_description: `${guestProject.occasion ?? "Occasion"}. ${guestProject.prompt}`
     });
     if (!error) window.localStorage.removeItem("stylesync-guest-project");
   }
@@ -132,7 +140,7 @@ export default function Home() {
     try {
       const accessToken = session?.access_token ?? null;
       const curations = await fetchRealCurations(
-        { name: forProject.name, budgetRupees: forProject.budget, prompt: forProject.prompt },
+        { name: forProject.name, budgetRupees: forProject.budget, prompt: `${forProject.occasion}. ${forProject.prompt}` },
         accessToken,
         3
       );
@@ -217,7 +225,7 @@ function StudioScreen({ board, project, selectedItems, total, onBack, onSwap, on
 }
 
 function ProjectForm({ draft, onChange, onToggleVibe, onClose, onSubmit }: { draft: Project; onChange: (project: Project) => void; onToggleVibe: (vibe: string) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <div className="dialog-backdrop" role="presentation"><form className="project-dialog" onSubmit={onSubmit}><button className="close-button" type="button" onClick={onClose}>×</button><p className="eyebrow">YOUR FIRST PROJECT</p><h2>What are we<br /><em>dressing for?</em></h2><label>Give this moment a name<input required value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="e.g. Cousin's cocktail night" /></label><div className="form-split"><label>Your max budget<div className="money-input"><span>₹</span><input type="number" min="500" step="100" value={draft.budget} onChange={(event) => onChange({ ...draft, budget: Number(event.target.value) })} /></div></label><label>Need it for<input value="An occasion" readOnly /></label></div><label>Choose 2–3 vibes<div className="vibe-picker">{vibes.map((vibe) => <button className={draft.vibe.includes(vibe) ? "selected" : ""} type="button" key={vibe} onClick={() => onToggleVibe(vibe)}>{draft.vibe.includes(vibe) ? "✓ " : ""}{vibe}</button>)}</div></label><label>Tell us a little more<textarea value={draft.prompt} onChange={(event) => onChange({ ...draft, prompt: event.target.value })} rows={3} /></label><button className="primary-button form-submit" type="submit">Show me my looks <span>→</span></button><p className="dialog-helper">No account needed to make your first project.</p></form></div>;
+  return <div className="dialog-backdrop" role="presentation"><form className="project-dialog" onSubmit={onSubmit}><button className="close-button" type="button" onClick={onClose}>×</button><p className="eyebrow">YOUR FIRST PROJECT</p><h2>What are we<br /><em>dressing for?</em></h2><label>Give this moment a name<input required value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="e.g. Cousin's cocktail night" /></label><div className="form-split"><label>Your max budget<div className="money-input"><span>₹</span><input type="number" min="500" step="100" value={draft.budget} onChange={(event) => onChange({ ...draft, budget: Number(event.target.value) })} /></div></label><label>Need it for<input required value={draft.occasion} onChange={(event) => onChange({ ...draft, occasion: event.target.value })} placeholder="e.g. Cocktail party" /></label></div><label>Choose 2–3 vibes<div className="vibe-picker">{vibes.map((vibe) => <button className={draft.vibe.includes(vibe) ? "selected" : ""} type="button" key={vibe} onClick={() => onToggleVibe(vibe)}>{draft.vibe.includes(vibe) ? "✓ " : ""}{vibe}</button>)}</div></label><label>Tell us a little more<textarea value={draft.prompt} onChange={(event) => onChange({ ...draft, prompt: event.target.value })} rows={3} /></label><button className="primary-button form-submit" type="submit">Show me my looks <span>→</span></button><p className="dialog-helper">No account needed to make your first project.</p></form></div>;
 }
 
 function SignInDialog({ onClose }: { onClose: () => void }) {
